@@ -7,4 +7,4 @@ julia> ]add https://github.com/Matheus-Janczkowski/Poniatowski
 
 Usage:
 
-using Poniatowski
+julia> using Poniatowski
