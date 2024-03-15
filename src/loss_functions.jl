@@ -6,7 +6,7 @@
 
 # Defines a function for the sum of squares
 
-function mse(x::Vector{Number})
+function mse(x)#x::Vector{Number})
 
     # Returns the sum of the components squared divided by the number of
     # components
@@ -17,7 +17,7 @@ end
 
 # Defines a function for the root mean squared error
 
-function rmse(x::Vector{Number})
+function rmse(x)#x::Vector{Number})
 
     # Returns the square root of the mse
 
@@ -31,7 +31,7 @@ end
 
 # Defines a function for the square of a number
 
-function number_squared(x::Number)
+function number_squared(x)#x::Number)
 
     return x^2
 

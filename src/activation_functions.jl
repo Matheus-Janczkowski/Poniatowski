@@ -12,6 +12,10 @@ tanh(x) = ((2*sigmoid(2*x))-1)
 
 linear(x) = x
 
+# Quadratic
+
+quadratic(x; a2=1.0, a1=0.0, a0=0.0) = (a2*(x^2))+(a1*x)+a0
+
 # Leaky-relu
 
 function leaky_relu(x; alpha=0.1)

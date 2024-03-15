@@ -18,8 +18,8 @@
 # If there is only a vector of functions for the activation functions, 
 # i.e. all the activation functions in the same layer are the same
 
-function evaluate_ANN(X::Vector{Float64}, W::Vector{Matrix{Float64}},
- B::Vector{Vector{Float64}}, F::Vector{Function})
+function evaluate_ANN(X::Vector{Float64}, W::Vector{Matrix{T}},
+ B::Vector{Vector{T}}, F::Vector{Function}) where {T<:Number}
 
     # Iterates from the input to the output layers
 
@@ -41,8 +41,8 @@ end
 # If there is a vector of vectors of activation functions, i.e. they are
 # individually and independently set
 
-function evaluate_ANN(X::Vector{Float64}, W::Vector{Matrix{Float64}},
- B::Vector{Vector{Float64}}, F::Vector{Vector{Function}})
+function evaluate_ANN(X::Vector{T}, W::Vector{Matrix{T2}}, B::Vector{
+ Vector{T2}}, F::Vector{Vector{Function}}) where {T<:Number, T2<:Number}
 
     # Iterates from the input to the output layers
 
@@ -81,8 +81,8 @@ end
 # If there is only a vector of functions for the activation functions, 
 # i.e. all the activation functions in the same layer are the same
 
-function evaluate_ANN(X::Vector{Float64}, params_vector::Vector{Float64},
- neurons_number::Vector{Int64}, F::Vector{Function})
+function evaluate_ANN(X::Vector{T}, params_vector::Vector{T2},
+ neurons_number::Vector{Int64}, F::Vector{Function}) where {T<:Number, T2<:Number}
 
     # Initializes a counter of recovered elements
 
@@ -95,7 +95,7 @@ function evaluate_ANN(X::Vector{Float64}, params_vector::Vector{Float64},
         # Creates the result of the linear combination for each neuron
         # in the layer
 
-        X_linearComb = Vector{Float64}(undef, neurons_number[i])
+        X_linearComb = Vector{Number}(undef, neurons_number[i])
 
         # Iterates through the number of neurons in the layer
 
@@ -113,7 +113,48 @@ function evaluate_ANN(X::Vector{Float64}, params_vector::Vector{Float64},
 
         # Evaluates the activation functions
 
-        X = F[i].(X_linearComb)
+        X = F[i-1].(X_linearComb)
+
+    end
+
+    # Returns the ANN's output
+
+    return X
+
+end 
+
+# If there is a vector of vectors of activation functions, i.e. they are
+# individually and independently set
+
+function evaluate_ANN(X::Vector{T}, params_vector::Vector{T2},
+ neurons_number::Vector{Int64}, F::Vector{Vector{Function}}) where {T<:Number, T2<:Number}
+
+    # Initializes a counter of recovered elements
+
+    read_elements = 0
+
+    # Iterates through the layers
+
+    for i=2:length(neurons_number)
+
+        # Creates the result of the linear combination for each neuron
+        # in the layer
+
+        X_linearComb = Vector{Number}(undef, neurons_number[i])
+
+        # Iterates through the number of neurons in the layer
+
+        for j=1:neurons_number[i]
+
+            X_linearComb[j] = F[i-1][j](dot(params_vector[(read_elements
+             +1):(read_elements+neurons_number[i-1])], X)+params_vector[(
+             read_elements+neurons_number[i-1]+1)])
+
+            # Updates the number of recovered elements
+
+            read_elements += neurons_number[i-1]+1
+
+        end
 
     end
 
