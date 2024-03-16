@@ -22,6 +22,8 @@ include("sensitivity_analysis.jl")
 
 include("loss_pinns.jl")
 
+include("augmemted_lagrangian_methods.jl")
+
 # Defines a function to test the functionality of the random initializa-
 # tion of parameters and of the evaluation of the ANN model
 
@@ -309,15 +311,15 @@ function test_pinn()
 
     # Defines a metric for the residue
 
-    domain_residueMetric(r) = (r^2)/n_collocationPoints
+    domain_residueMetric(r) = sum(r.^2)/n_collocationPoints
 
     # Defines a metric for the error in the boundary
 
-    boundary_residueMetric(r) = (r^2)/n_boundaryPoints
+    boundary_residueMetric(r) = sum(r.^2)/n_boundaryPoints
 
     # Sets the vector of Lagrange multipliers
 
-    lagrange_multipliers = [1.0; 1.0]
+    lagrange_multipliers = [1.0; 1.0; 1.0]
 
     # PDE: du/dx + du/dy = x+y and u(x,0) = 0.5*x^2 and u(0,y) = 0.5*y^2
     # Defines a function for the residue of the domain points (individu-
@@ -347,9 +349,26 @@ function test_pinn()
 
     # Evaluates the loss function 
 
-    phi_PINN = phi_lossPINN(params_vector,
+    phi_PINNInitial = phi_lossPINN(params_vector, pinn_model,
      omega_collocationPoints, dOmega_collocationPoints, residue_domain,
      dirichlet_error, domain_residueMetric, boundary_residueMetric,
      neurons_number[1], neurons_number[end], lagrange_multipliers)
+
+    # Creates a driver for the loss function
+
+    driver_loss(parameters) = phi_lossPINN(parameters, pinn_model,
+    omega_collocationPoints, dOmega_collocationPoints, residue_domain,
+    dirichlet_error, domain_residueMetric, boundary_residueMetric,
+    neurons_number[1], neurons_number[end], lagrange_multipliers)[1]
+
+    # Creates a driver for the gradient of the loss function w.r.t. the
+    # parameters
+
+    driver_gradient(parameters) = gradient_automaticDiff(driver_loss, 
+     parameters)
+
+    # Tests the gradient
+
+    driver_gradient(params_vector)
 
 end

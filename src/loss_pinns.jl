@@ -2,10 +2,10 @@
 
 # Defines a function to calculate the loss function of the PINN model
 
-function phi_lossPINN(parameters::Vector{T}, omega_collocationPoints::
- Matrix{Float64}, dOmega_collocationPoints::Vector{Matrix{Float64}},
- residue_domain::Function, dirichlet_error::Function, 
- domain_residueMetric::Function, boundary_residueMetric::Function,
+function phi_lossPINN(parameters::Vector{T}, pinn_model::Function, 
+ omega_collocationPoints::Matrix{Float64}, dOmega_collocationPoints::
+ Vector{Matrix{Float64}}, residue_domain::Function, dirichlet_error::
+ Function, domain_residueMetric::Function, boundary_residueMetric::Function,
  input_dimensionality::Int64, output_dimensionality::Int64,
  lagrange_multipliers::Vector{Float64}) where {T<:Number}
 
@@ -17,7 +17,7 @@ function phi_lossPINN(parameters::Vector{T}, omega_collocationPoints::
     
     phi_domain = zero(T)
 
-    phi_boundary = zero(T)
+    phi_boundary = Vector{T}(undef, length(dOmega_collocationPoints))
 
     # Iterates through the domain collocation points
 
@@ -55,12 +55,13 @@ function phi_lossPINN(parameters::Vector{T}, omega_collocationPoints::
         # Multiplies the error of this set by the Lagrange multiplier of
         # this set and adds it to the phi_boundary
 
-        phi_boundary += (lagrange_multipliers[1+i]*error_boundarySet)
+        phi_boundary[i] += error_boundarySet
 
     end
 
     # Returns the loss
 
-    return (phi_domain+phi_boundary)
+    return (dot([phi_domain; phi_boundary], lagrange_multipliers),
+     phi_boundary)
 
 end
