@@ -22,7 +22,7 @@ include("sensitivity_analysis.jl")
 
 include("loss_pinns.jl")
 
-include("augmemted_lagrangian_methods.jl")
+include("augmented_lagrangian_methods.jl")
 
 # Defines a function to test the functionality of the random initializa-
 # tion of parameters and of the evaluation of the ANN model
@@ -258,16 +258,29 @@ function test_pinn()
     params_vector = initialize_randomlyVector(neurons_number,
      distribution_radius)
 
-    # Defines a driver for the output of the ANN model as function of 
-    # the inputs and of the parameters
+    ####################################################################
+    #                       Augmented Lagrangian                       #
+    ####################################################################
 
-    function pinn_model(input, parameters)
+    # Defines the number of outer iterations
 
-        # Evaluates the ANN output and returns it
+    n_iterationsLA = 10
 
-        return evaluate_ANN(input, parameters, neurons_number, F)
+    # Defines the maximum number of inner iterations
 
-    end
+    n_innerIterations = 10000
+
+    # Defines the c penalty
+
+    c_penalty = 100.0
+
+    # Defines the minimum value of the objetive function
+
+    minimum_objective = 1E-5
+
+    # Defines the optimizer of the NLopt library
+
+    optimizer = :LD_LBFGS_NOCEDAL
 
     ####################################################################
     #                                PDE                               #
@@ -289,17 +302,22 @@ function test_pinn()
     omega_collocationPoints = [0.2 0.5 0.8 0.2 0.5 0.8 0.2 0.5 0.8;
                                0.2 0.2 0.2 0.5 0.5 0.5 0.8 0.8 0.8]
 
-    # Creates a grid of boundary points
+    # Creates a grid of boundary points for Dirichlet boundary condi-
+    # tions
 
-    dOmega_collocationPoints = Vector{Matrix{Float64}}(undef, 2)
+    dOmega_collocationDirichlet = Vector{Matrix{Float64}}(undef, 2)
 
-    dOmega_collocationPoints[1] = [0.0 0.2 0.5 0.8 1.0;
+    dOmega_collocationDirichlet[1] = [0.0 0.2 0.5 0.8 1.0;
                                    0.0 0.0 0.0 0.0 0.0;
                                    0.0 (0.5*(0.2^2)) (0.5*(0.5^2)) (0.5*(0.8^2)) 0.5]
 
-    dOmega_collocationPoints[2] = [0.0 0.0 0.0 0.0 0.0;
+    dOmega_collocationDirichlet[2] = [0.0 0.0 0.0 0.0 0.0;
                                    0.0 0.2 0.5 0.8 1.0;
                                    0.0 (0.5*(0.2^2)) (0.5*(0.5^2)) (0.5*(0.8^2)) 0.5]
+
+    # Creates a grid of boundary points for Neumann boundary conditions
+
+    dOmega_collocationNeumann = Matrix{Float64}[]
 
     # Calculates the number of collocation points
 
@@ -319,56 +337,82 @@ function test_pinn()
 
     # Sets the vector of Lagrange multipliers
 
-    lagrange_multipliers = [1.0; 1.0; 1.0]
+    lagrange_multipliers = [1.0; 1.0]
 
-    # PDE: du/dx + du/dy = x+y and u(x,0) = 0.5*x^2 and u(0,y) = 0.5*y^2
-    # Defines a function for the residue of the domain points (individu-
-    # ally)
+    # Creates a driver for the loss function in the domain
 
-    function residue_domain(input::Vector{Float64}, pinn_model::Function)
+    function driver_lossDomain(parameters::Vector{T}) where {T<:Number}
 
-        # Evaluates the derivatives
+        # Creates a driver for the model's output setting the parameters
 
-        jacobian_input = jacobian_automaticDiff(pinn_model, input)
+        driver_input(input) = evaluate_ANN(input, parameters,
+         neurons_number, F)
 
-        # Evaluates the residue and returns it
+        # Evaluates the parcels of the loss function in the domain and
+        # returns it
 
-        return (jacobian_input[1,1]+jacobian_input[1,2]-input[1]-input[2])
+        return phi_lossDomain(driver_input, parameters,
+         omega_collocationPoints, residue_domain, domain_residueMetric, 
+         neurons_number[1], neurons_number[end])
 
     end
 
-    # Defines a function for the residue of the boundary points (indivi-
-    # dually)
+    # Creates a driver for the value of the error in the boundary points
 
-    function dirichlet_error(input::Vector{Float64}, pinn_model::Function, 
-     true_value::Vector{Float64})
+    function driver_constraintsBoundary(parameters::Vector{T}) where {T<:Number}
 
-        return (pinn_model(input)-true_value)
+        # Creates a driver for the model's output setting the parameters
+
+        driver_input(input) = evaluate_ANN(input, parameters,
+         neurons_number, F)
+
+        # Evaluates the parcels of the loss function in the boundary and
+        # returns it
+
+        return phi_lossBoundary(driver_input, parameters,
+         dOmega_collocationDirichlet, dOmega_collocationNeumann,
+         dirichlet_error, neumann_error, boundary_residueMetric,
+         neurons_number[1], neurons_number[end], lagrange_multipliers)[2]
+
+    end
+
+    # Creates a driver for the evaluation of the gradient of the domain
+
+    function driver_gradientDomain(parameters::Vector{Float64})
+
+        # Evaluates the gradient and returns it
+
+        return gradient_automaticDiff(driver_lossDomain, parameters)
+
+    end
+
+    # Creates a driver for the evaluation of the gradient of the boundary
+
+    function driver_gradientConstraints(parameters::Vector{Float64})
+
+        # Evaluates the jacobian and returns it
+
+        return jacobian_automaticDiff(driver_constraintsBoundary, parameters)
 
     end
 
     # Evaluates the loss function 
 
-    phi_PINNInitial = phi_lossPINN(params_vector, pinn_model,
-     omega_collocationPoints, dOmega_collocationPoints, residue_domain,
-     dirichlet_error, domain_residueMetric, boundary_residueMetric,
-     neurons_number[1], neurons_number[end], lagrange_multipliers)
-
-    # Creates a driver for the loss function
-
-    driver_loss(parameters) = phi_lossPINN(parameters, pinn_model,
-    omega_collocationPoints, dOmega_collocationPoints, residue_domain,
-    dirichlet_error, domain_residueMetric, boundary_residueMetric,
-    neurons_number[1], neurons_number[end], lagrange_multipliers)[1]
-
-    # Creates a driver for the gradient of the loss function w.r.t. the
-    # parameters
-
-    driver_gradient(parameters) = gradient_automaticDiff(driver_loss, 
-     parameters)
+    phi_PINNInitial = (driver_lossDomain(params_vector)+dot(
+     driver_constraintsBoundary(params_vector), lagrange_multipliers))
 
     # Tests the gradient
 
-    driver_gradient(params_vector)
+    driver_gradientDomain(params_vector)
+
+    driver_gradientConstraints(params_vector)
+
+    # Evaluates the augmented lagrangian
+
+    augmented_LagrangianMartinez(params_vector, driver_lossDomain, 
+     driver_constraintsBoundary, driver_gradientDomain, 
+     driver_gradientConstraints, length(dOmega_collocationDirichlet)+
+     length(dOmega_collocationNeumann), c_penalty, n_iterationsLA, 
+     n_innerIterations, optimizer, minimum_objective)
 
 end
