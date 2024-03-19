@@ -5,8 +5,7 @@
 
 function phi_lossDomain(driver_input::Function, parameters::Vector{T},
  omega_collocationPoints::Matrix{Float64}, residue_domain::Function,
- domain_residueMetric::Function, input_dimensionality::Int64,
- output_dimensionality::Int64) where {T<:Number}
+ domain_residueMetric::Function) where {T<:Number}
 
     # Initializes the loss function for each one of the parcels
     
@@ -19,7 +18,7 @@ function phi_lossDomain(driver_input::Function, parameters::Vector{T},
         # Evaluates the residue in each one of the collocation points
 
         phi += domain_residueMetric(residue_domain(
-         omega_collocationPoints[1:input_dimensionality,i], driver_input))
+         omega_collocationPoints[:,i], driver_input))
 
     end
 
@@ -33,10 +32,12 @@ end
 # with the boundary parcel only
 
 function phi_lossBoundary(driver_input::Function, parameters::Vector{T},
- dOmega_collocationDirichlet::Vector{Matrix{Float64}},
- dOmega_collocationNeumann::Vector{Matrix{Float64}}, dirichlet_error::
- Function, neumann_error::Function, boundary_residueMetric::Function,
- input_dimensionality::Int64, output_dimensionality::Int64) where {T<:Number}
+ dOmega_collocationDirichlet::Vector{Matrix{Float64}}, 
+ dOmega_valuesDirichlet::Vector{Matrix{Float64}},
+ dOmega_outputIndexesDirichlet::Vector{Matrix{Int64}},
+ dOmega_collocationNeumann::Vector{Matrix{Float64}},
+ dOmega_valuesNeumann::Vector{Matrix{Float64}}, dirichlet_error::
+ Function, neumann_error::Function, boundary_residueMetric::Function) where {T<:Number}
 
     # Initializes the loss function for each one of the parcels
     
@@ -63,15 +64,12 @@ function phi_lossBoundary(driver_input::Function, parameters::Vector{T},
             # Evaluates the error
 
             error_boundarySet += boundary_residueMetric(dirichlet_error(
-            dOmega_collocationDirichlet[i][1:input_dimensionality,j], 
-            driver_input, dOmega_collocationDirichlet[i][(
-            input_dimensionality+1):(input_dimensionality+
-            output_dimensionality),j]))
+            dOmega_collocationDirichlet[i][:,j], driver_input,
+             dOmega_valuesDirichlet[i][:,j], dOmega_outputIndexesDirichlet[i][:,j]))
 
         end
 
-        # Multiplies the error of this set by the Lagrange multiplier of
-        # this set and adds it to the phi
+        # Adds it to the phi
 
         phi[boundary_counter] += error_boundarySet
 
@@ -97,15 +95,12 @@ function phi_lossBoundary(driver_input::Function, parameters::Vector{T},
             # Evaluates the error
 
             error_boundarySet += boundary_residueMetric(neumann_error(
-            dOmega_collocationNeumann[i][1:input_dimensionality,j], 
-            driver_input, dOmega_collocationNeumann[i][(
-            input_dimensionality+1):(input_dimensionality+
-            output_dimensionality),j]))
+            dOmega_collocationNeumann[i][:,j], driver_input,
+             dOmega_valuesNeumann[i][:,j]))
 
         end
 
-        # Multiplies the error of this set by the Lagrange multiplier of
-        # this set and adds it to the phi
+        # Adds it to the phi
 
         phi[boundary_counter] += error_boundarySet
 

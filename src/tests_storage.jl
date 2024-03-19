@@ -8,7 +8,13 @@ using Plots
 
 using TimerOutputs
 
-using NLopt
+#using Optimization, OptimizationNLopt
+
+using Plots
+
+using LaTeXStrings
+
+using WallE
 
 include("evaluation_and_initialization.jl")
 
@@ -22,7 +28,15 @@ include("sensitivity_analysis.jl")
 
 include("loss_pinns.jl")
 
+include("domain_residues.jl")
+
+include("boundary_residues.jl")
+
 include("augmented_lagrangian_methods.jl")
+
+include("plot_utilities.jl")
+
+include("ADAM.jl")
 
 # Defines a function to test the functionality of the random initializa-
 # tion of parameters and of the evaluation of the ANN model
@@ -235,6 +249,274 @@ end
 # Defines a function to test PINNs
 
 function test_pinn()
+
+    ####################################################################
+    #                                ANN                               #
+    ####################################################################
+    
+    # Sets a radius for the distribution of initial weights and biases
+
+    distribution_radius = 100.0
+
+    # Set a vector with the number of neurons in each one of the layers
+
+    neurons_number = [2; 2; 1]
+
+    # Sets the vector of activation functions considering that they are 
+    # all the same in the same layer
+
+    F = [quadratic; linear]
+
+    # Initializes the weights and biases randomly
+
+    params_vector = initialize_randomlyVector(neurons_number,
+     distribution_radius)
+
+    params_vector = [1.0; 0.0; 0.0; 0.0; 1.0; 0.0; 0.5; 0.5; 0.0]+(0.5*randn(9))
+
+    # Defines the minimum value of the objetive function
+ 
+    minimum_objective = 1E-5
+
+    # Defines the number of iterations
+
+    n_iterations = 10000
+ 
+    # Defines the optimizer of the NLopt library
+ 
+    optimizer = :LD_TNEWTON
+
+    ####################################################################
+    #                                PDE                               #
+    ####################################################################
+
+    # Sets the vector of number of collocation points in the x and y di-
+    # rections
+
+    grid_discretization = [8; 5]
+
+    # Sets the interval of the domain (x_inf <= x <= x_sup and y_inf <= 
+    # y <= y_sup)
+
+    interval_dimensions = [0.0 1.0; 0.0 0.5]
+
+
+    # Creates a grid of domain collocation points
+
+    omega_collocationPoints = [0.2 0.5 0.8 0.2 0.5 0.8 0.2 0.5 0.8;
+                               0.2 0.2 0.2 0.5 0.5 0.5 0.8 0.8 0.8]
+
+    ####################################################################
+    #                        Boundary conditions                       #
+    ####################################################################
+
+    # Creates a grid of boundary points for Dirichlet boundary condi-
+    # tions. Creates a vector of the value of the boundary condition and
+    # another vector with the indexes of the ouput layer to be constrained
+    # with boundary condition
+
+    dOmega_collocationDirichlet = Vector{Matrix{Float64}}(undef, 2)
+
+    dOmega_valuesDirichlet = Vector{Matrix{Float64}}(undef, 2)
+
+    dOmega_outputIndexesDirichlet = Vector{Matrix{Int64}}(undef, 2)
+
+    dOmega_collocationDirichlet[1] = [0.0 0.2 0.5 0.8 1.0;
+                                   0.0 0.0 0.0 0.0 0.0]
+
+    dOmega_valuesDirichlet[1] = [0.0 (0.5*(0.2^2)) (0.5*(0.5^2)) (0.5*(0.8^2)) 0.5]
+
+    dOmega_outputIndexesDirichlet[1] = [1 1 1 1 1]
+
+    dOmega_collocationDirichlet[2] = [0.0 0.0 0.0 0.0 0.0;
+                                   0.0 0.2 0.5 0.8 1.0]
+
+    dOmega_valuesDirichlet[2] = [0.0 (0.5*(0.2^2)) (0.5*(0.5^2)) (0.5*(0.8^2)) 0.5]
+
+    dOmega_outputIndexesDirichlet[2] = [1 1 1 1 1]
+
+    # Creates a grid of boundary points for Neumann boundary conditions
+
+    dOmega_collocationNeumann = Matrix{Float64}[]
+
+    dOmega_valuesNeumann = Matrix{Float64}[]
+
+    # Calculates the number of collocation points
+
+    n_collocationPoints = size(omega_collocationPoints,2)
+
+    # Calculates the number of boundary points
+
+    n_boundaryPoints = 10
+
+    # Defines a metric for the residue
+
+    domain_residueMetric(r) = sum(r.^2)/n_collocationPoints
+
+    # Defines a metric for the error in the boundary
+
+    boundary_residueMetric(r) = sum(r.^2)/n_boundaryPoints
+
+    ####################################################################
+    #                              Drivers                             #
+    ####################################################################
+
+    # Creates a driver for the loss function in the domain
+
+    function driver_lossDomain(parameters::Vector{T}) where {T<:Number}
+
+        # Creates a driver for the model's output setting the parameters
+
+        driver_input(input) = evaluate_ANN(input, parameters,
+         neurons_number, F)
+
+        # Evaluates the parcels of the loss function in the domain and
+        # returns it
+
+        return phi_lossDomain(driver_input, parameters,
+         omega_collocationPoints, residue_domain, domain_residueMetric)
+
+    end
+
+    # Creates a driver for the value of the error in the boundary points
+
+    function driver_constraintsBoundary(parameters::Vector{T}) where {T<:Number}
+
+        # Creates a driver for the model's output setting the parameters
+
+        driver_input(input) = evaluate_ANN(input, parameters,
+         neurons_number, F)
+
+        # Evaluates the parcels of the loss function in the boundary and
+        # returns it
+
+        return phi_lossBoundary(driver_input, parameters,
+         dOmega_collocationDirichlet, dOmega_valuesDirichlet,
+         dOmega_outputIndexesDirichlet, dOmega_collocationNeumann,
+         dOmega_valuesNeumann, dirichlet_error, neumann_error,
+         boundary_residueMetric)
+
+    end
+
+    # Creates a driver for the total loss by just summing all parcels
+
+    function driver_totalLoss(parameters::Vector{T}) where {T<:Number}
+
+        return (driver_lossDomain(parameters)+sum(
+         driver_constraintsBoundary(parameters)))
+
+    end
+
+    # Creates a driver for the gradient 
+
+    function driver_gradient(parameters)
+
+        # Evaluates the gradient and returns it
+    
+        return gradient_automaticDiff(driver_totalLoss, parameters)
+
+    end
+
+    ####################################################################
+    #                            Calculation                           #
+    ####################################################################
+
+    # Evaluates the loss function in the domain
+
+    loss_domain = driver_lossDomain(params_vector)
+
+    println("The loss of the domain collocation points with the initia",
+     "l vector of parameters is ", loss_domain, "\n\n")
+
+    # Evaluates the loss function in the boundary
+
+    loss_boundary = driver_constraintsBoundary(params_vector)
+
+    println("The vector of error of the boundary collocation points wi",
+     "th the initial vector of parameters is:")
+
+    for i=1:length(loss_boundary)
+
+        println(loss_boundary[i])
+
+    end
+
+    # Evaluates the total loss
+
+    total_loss = driver_totalLoss(params_vector)
+
+    println("\n\nThe total loss with the initial vector of parameters ",
+     "is ", total_loss, "\n")
+
+    # Makes a surface plot
+
+    driver_input(input) = evaluate_ANN(input, params_vector, 
+     neurons_number, F)
+
+    plot_surface([0.0; 1.0], [0.0; 1.0], driver_input, path_plot=
+     joinpath(pwd(), "prior_optimization.pdf"))
+
+    ####################################################################
+    #                           Optimization                           #
+    ####################################################################
+
+    # Tests the gradient
+
+    println("The gradient of the objective function with the initial v",
+     "ector of parameters and the numerical gradient are:")
+
+    gradient_vector = driver_gradient(params_vector)
+
+    numerical_gradient = gradient_CFD(driver_totalLoss, params_vector)
+
+    for i=1:length(params_vector)
+
+        println(gradient_vector[i], "  ", numerical_gradient[i])
+
+    end 
+
+    println("\n\n")
+
+    # Sets and uses the WallE optimizer
+
+    ci = -Inf*ones(length(params_vector))
+
+    cs = Inf*ones(length(params_vector))
+
+    options = WallE.Init()
+
+    options["NITER"] = n_iterations
+
+    options["TOL_NORM"] = 1E-5
+
+    options["SHOW"] = true 
+
+    output = WallE.Solve(driver_totalLoss, driver_gradient, 
+     params_vector, ci, cs, options)
+
+    x = output["RESULT"]
+
+    x_adam = adam_optimizer(params_vector, driver_totalLoss,
+     driver_gradient, length(params_vector))
+
+    #= Initializes the NLopt optimization problem
+
+    opt = Opt(optimizer, length(params_vector))
+
+    opt.maxeval = n_iterations
+
+    opt.ftol_abs = minimum_objective
+    
+    opt.min_objective = driver_optimization
+    
+    min_loss, params_vector, convergence_flag = optimize(opt,
+     params_vector)=#
+
+end
+
+# Defines a function to test Augmented Lagrangian method
+
+function test_pinnLA()
 
     ####################################################################
     #                                ANN                               #

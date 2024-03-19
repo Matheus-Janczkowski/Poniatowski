@@ -45,3 +45,49 @@ function hessian_automaticDiff(f, variables, f_dimensionality)
     return vector_hessians
 
 end
+
+# Defines a function to evaluate the gradient of a scalar function using
+# central finite differences
+
+function gradient_CFD(f::Function, variables::Vector{Float64}; epsilon=
+ 1E-5)
+
+    # Initializes the gradient vector
+
+    df = zeros(length(variables))
+
+    # Iterates through the variables
+
+    for i=1:length(variables)
+
+        # Gets the variables vector ahead
+
+        x_ahead = copy(variables)
+
+        x_ahead[i] += epsilon
+
+        # Evaluates the function ahead
+
+        f_ahead = f(x_ahead)
+
+        # Gets the variables vector abaft
+
+        x_abaft = copy(variables)
+
+        x_abaft[i] -= epsilon
+
+        # Evaluates the function abaft
+
+        f_abaft = f(x_abaft)
+
+        # Calculates the derivative
+
+        df[i] = ((f_ahead-f_abaft)/(2*epsilon))
+
+    end 
+
+    # Returns the gradient
+
+    return df
+
+end
