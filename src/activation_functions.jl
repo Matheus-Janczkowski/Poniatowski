@@ -10,7 +10,7 @@ tanh(x) = ((2*sigmoid(2*x))-1)
 
 # Linear
 
-linear(x) = x
+linear_function(x; a1=1.0, a0=0.0) = (a1*x)+a0
 
 # Quadratic
 

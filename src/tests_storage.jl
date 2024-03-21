@@ -256,7 +256,7 @@ function test_pinn()
     
     # Sets a radius for the distribution of initial weights and biases
 
-    distribution_radius = 100.0
+    distribution_radius = 5.0
 
     # Set a vector with the number of neurons in each one of the layers
 
@@ -265,14 +265,18 @@ function test_pinn()
     # Sets the vector of activation functions considering that they are 
     # all the same in the same layer
 
-    F = [quadratic; linear]
+    F = Vector{Function}(undef, length(neurons_number)-1)
+
+    F[1] = linear_function
+    
+    F[2] = linear_function
 
     # Initializes the weights and biases randomly
 
     params_vector = initialize_randomlyVector(neurons_number,
      distribution_radius)
 
-    params_vector = [1.0; 0.0; 0.0; 0.0; 1.0; 0.0; 0.5; 0.5; 0.0]+(0.5*randn(9))
+    #params_vector = [1.0; 0.0; 0.0; 0.0; 1.0; 0.0; 0.5; 0.5; 0.0]+(0.5*randn(9))
 
     # Defines the minimum value of the objetive function
  
@@ -299,7 +303,6 @@ function test_pinn()
     # y <= y_sup)
 
     interval_dimensions = [0.0 1.0; 0.0 0.5]
-
 
     # Creates a grid of domain collocation points
 
@@ -335,13 +338,19 @@ function test_pinn()
 
     dOmega_outputIndexesDirichlet[2] = [1 1 1 1 1]
 
-    # Creates a grid of boundary points for Neumann boundary conditions
+    # Creates a grid of boundary points for Neumann boundary conditions.
+    # Creates a vector of sets of Neumann collocation points in the 
+    # boundary; a vector of matrices of values of the Neumann conditions
+    # and a vector of functions, each of these functions picks the deri-
+    # vatives of the ANN and performs the boundary condition
 
     dOmega_collocationNeumann = Matrix{Float64}[]
 
     dOmega_valuesNeumann = Matrix{Float64}[]
 
-    # Calculates the number of collocation points
+    Neumann_conditions = Function[]
+
+    # Calculates the number of collocation points of the domain
 
     n_collocationPoints = size(omega_collocationPoints,2)
 
@@ -351,11 +360,17 @@ function test_pinn()
 
     # Defines a metric for the residue
 
-    domain_residueMetric(r) = sum(r.^2)/n_collocationPoints
+    function domain_residueMetric(r::Vector{T}) where {T<:Number}
+    
+        return sum(r.^2)/n_collocationPoints
+end
 
     # Defines a metric for the error in the boundary
 
-    boundary_residueMetric(r) = sum(r.^2)/n_boundaryPoints
+    function boundary_residueMetric(r::Vector{T}) where {T<:Number}
+    
+        return sum(r.^2)/n_boundaryPoints
+end
 
     ####################################################################
     #                              Drivers                             #
@@ -393,8 +408,8 @@ function test_pinn()
         return phi_lossBoundary(driver_input, parameters,
          dOmega_collocationDirichlet, dOmega_valuesDirichlet,
          dOmega_outputIndexesDirichlet, dOmega_collocationNeumann,
-         dOmega_valuesNeumann, dirichlet_error, neumann_error,
-         boundary_residueMetric)
+         dOmega_valuesNeumann, Neumann_conditions, dirichlet_error, 
+         neumann_error, boundary_residueMetric)
 
     end
 
@@ -409,7 +424,7 @@ function test_pinn()
 
     # Creates a driver for the gradient 
 
-    function driver_gradient(parameters)
+    function driver_gradient(parameters::Vector{T}) where {T<:Number}
 
         # Evaluates the gradient and returns it
     
@@ -450,8 +465,10 @@ function test_pinn()
 
     # Makes a surface plot
 
-    driver_input(input) = evaluate_ANN(input, params_vector, 
+    function driver_input(input)
+    evaluate_ANN(input, params_vector, 
      neurons_number, F)
+end
 
     plot_surface([0.0; 1.0], [0.0; 1.0], driver_input, path_plot=
      joinpath(pwd(), "prior_optimization.pdf"))
@@ -467,11 +484,13 @@ function test_pinn()
 
     gradient_vector = driver_gradient(params_vector)
 
-    numerical_gradient = gradient_CFD(driver_totalLoss, params_vector)
+    numerical_gradient = gradient_CFD(driver_totalLoss, params_vector, 
+     epsilon=5E-8)
 
     for i=1:length(params_vector)
 
-        println(gradient_vector[i], "  ", numerical_gradient[i])
+        println(gradient_vector[i], "  ", numerical_gradient[i], "  ",
+         params_vector[i])
 
     end 
 
@@ -479,9 +498,9 @@ function test_pinn()
 
     # Sets and uses the WallE optimizer
 
-    ci = -Inf*ones(length(params_vector))
+    #=ci = -20*ones(length(params_vector))
 
-    cs = Inf*ones(length(params_vector))
+    cs = 20*ones(length(params_vector))
 
     options = WallE.Init()
 
@@ -494,7 +513,7 @@ function test_pinn()
     output = WallE.Solve(driver_totalLoss, driver_gradient, 
      params_vector, ci, cs, options)
 
-    x = output["RESULT"]
+    x = output["RESULT"]=#
 
     x_adam = adam_optimizer(params_vector, driver_totalLoss,
      driver_gradient, length(params_vector))
@@ -698,3 +717,5 @@ function test_pinnLA()
      n_innerIterations, optimizer, minimum_objective)
 
 end
+
+test_pinn()

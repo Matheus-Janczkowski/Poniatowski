@@ -12,6 +12,6 @@ function residue_domain(input::Vector{Float64}, pinn_model::Function)
 
     # Evaluates the residue and returns it
 
-    return (jacobian_input[1,1]+jacobian_input[1,2]-input[1]-input[2])
+    return ([jacobian_input[1,1]+jacobian_input[1,2]-input[1]-input[2]])
 
 end

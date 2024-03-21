@@ -11,14 +11,15 @@ function phi_lossDomain(driver_input::Function, parameters::Vector{T},
     
     phi = zero(T)
 
+    println("domain", typeof(phi))
+
     # Iterates through the domain collocation points
 
     for i=1:size(omega_collocationPoints,2)
 
         # Evaluates the residue in each one of the collocation points
 
-        phi += domain_residueMetric(residue_domain(
-         omega_collocationPoints[:,i], driver_input))
+        phi += domain_residueMetric(residue_domain(omega_collocationPoints[:,i], driver_input))
 
     end
 
@@ -36,13 +37,16 @@ function phi_lossBoundary(driver_input::Function, parameters::Vector{T},
  dOmega_valuesDirichlet::Vector{Matrix{Float64}},
  dOmega_outputIndexesDirichlet::Vector{Matrix{Int64}},
  dOmega_collocationNeumann::Vector{Matrix{Float64}},
- dOmega_valuesNeumann::Vector{Matrix{Float64}}, dirichlet_error::
- Function, neumann_error::Function, boundary_residueMetric::Function) where {T<:Number}
+ dOmega_valuesNeumann::Vector{Matrix{Float64}}, Neumann_conditions::
+ Vector{Function}, dirichlet_error::Function, neumann_error::Function,
+ boundary_residueMetric::Function) where {T<:Number}
 
     # Initializes the loss function for each one of the parcels
     
     phi = Vector{T}(undef, length(dOmega_collocationDirichlet)+length(
     dOmega_collocationNeumann))
+
+    println("boundary", typeof(phi))
 
     # Initializes a counter of boundary points
 
@@ -95,8 +99,8 @@ function phi_lossBoundary(driver_input::Function, parameters::Vector{T},
             # Evaluates the error
 
             error_boundarySet += boundary_residueMetric(neumann_error(
-            dOmega_collocationNeumann[i][:,j], driver_input,
-             dOmega_valuesNeumann[i][:,j]))
+             dOmega_collocationNeumann[i][:,j], driver_input,
+             Neumann_conditions[i], dOmega_valuesNeumann[i][:,j]))
 
         end
 

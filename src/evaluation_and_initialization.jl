@@ -115,11 +115,14 @@ function evaluate_ANN(X::Vector{T}, params_vector::Vector{T2},
 
         X = F[i-1].(X_linearComb)
 
+
     end
 
     # Returns the ANN's output
 
+
     return X
+
 
 end 
 
