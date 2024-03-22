@@ -14,6 +14,8 @@ using Plots
 
 using LaTeXStrings
 
+using Printf
+
 include("plot_utilities.jl")
 
 # Defines a function for the following PINN model
@@ -26,8 +28,9 @@ quadratic(x) = x^2
 
 linear(x) = x
 
-function pinn_model(x, params_vector, neurons_number, 
- activation_functions)
+function pinn_model(x::Vector{T}, params_vector::Vector{T2},
+ neurons_number::Vector{Int64}, activation_functions::Vector{Function}) where {
+ T<:Number, T2<:Number}
 
     #=x_21 = (((x[1]*params_vector[1])+(x[2]*params_vector[2])+
      params_vector[3])^2)
@@ -87,11 +90,8 @@ end
 
 # Defines a function for the residue in the domain
 
-function residue_domain(params_vector::Vector{T}) where {T<:Number}
-
-    neurons_number = [2; 2; 1]
-
-    activation_functions = [quadratic; linear]
+function residue_domain(params_vector::Vector{T}, neurons_number::Vector{
+ Int64}, activation_functions::Vector{Function}) where {T<:Number}
 
     omega_collocationPoints = [0.2 0.5 0.8 0.2 0.5 0.8 0.2 0.5 0.8;
                                0.2 0.2 0.2 0.5 0.5 0.5 0.8 0.8 0.8]
@@ -137,7 +137,7 @@ function residue_domain(params_vector::Vector{T}) where {T<:Number}
         for j=1:size(dOmega_collocationDirichlet[i],2)
 
             phi += sum((pinn_model(dOmega_collocationDirichlet[i][:,j],
-            params_vector).-dOmega_valuesDirichlet[i][:,j]).^2)
+            params_vector, neurons_number, activation_functions).-dOmega_valuesDirichlet[i][:,j]).^2)
 
         end
 
@@ -147,11 +147,8 @@ function residue_domain(params_vector::Vector{T}) where {T<:Number}
 
 end
 
-function residue_domainAnalytic(params_vector::Vector{T}) where {T<:Number}
-
-    neurons_number = [2; 2; 1]
-
-    activation_functions = [quadratic; linear]
+function residue_domainAnalytic(params_vector::Vector{T}, neurons_number
+ ::Vector{Int64}, activation_functions::Vector{Function}) where {T<:Number}
 
     omega_collocationPoints = [0.2 0.5 0.8 0.2 0.5 0.8 0.2 0.5 0.8;
                                0.2 0.2 0.2 0.5 0.5 0.5 0.8 0.8 0.8]
@@ -267,21 +264,75 @@ end
 
 function test_optimization()
 
-    gradient_objective(params) = ForwardDiff.gradient(residue_domain, params)
+    omega_collocationPoints = [0.2 0.5 0.8 0.2 0.5 0.8 0.2 0.5 0.8;
+                               0.2 0.2 0.2 0.5 0.5 0.5 0.8 0.8 0.8]
 
-    gradient_analytic(params) = ForwardDiff.gradient(residue_domainAnalytic,
-    params_vector)
+    dOmega_collocationDirichlet = Vector{Matrix{Float64}}(undef, 2)
+
+    dOmega_valuesDirichlet = Vector{Matrix{Float64}}(undef, 2)
+
+    dOmega_outputIndexesDirichlet = Vector{Matrix{Int64}}(undef, 2)
+
+    dOmega_collocationDirichlet[1] = [0.0 0.2 0.5 0.8 1.0;
+                                    0.0 0.0 0.0 0.0 0.0]
+
+    dOmega_valuesDirichlet[1] = [0.0 (0.5*(0.2^2)) (0.5*(0.5^2)) (0.5*(0.8^2)) 0.5]
+
+    dOmega_outputIndexesDirichlet[1] = [1 1 1 1 1]
+
+    dOmega_collocationDirichlet[2] = [0.0 0.0 0.0 0.0 0.0;
+                                    0.0 0.2 0.5 0.8 1.0]
+
+    dOmega_valuesDirichlet[2] = [0.0 (0.5*(0.2^2)) (0.5*(0.5^2)) (0.5*(0.8^2)) 0.5]
+
+    dOmega_outputIndexesDirichlet[2] = [1 1 1 1 1]
+
+    neurons_number = [2; 2; 1]
+
+    activation_functions = [quadratic; linear]
+
+    driver_residueAnalytic(params) = residue_domainAnalytic(params, 
+     neurons_number, activation_functions)
+
+    driver_residueAutoDiff(params) = residue_domain(params, 
+     neurons_number, activation_functions)
+
+    gradient_objective(params) = ForwardDiff.gradient(driver_residueAutoDiff,
+     params)
+
+    gradient_analytic(params) = ForwardDiff.gradient(driver_residueAnalytic,
+     params)
 
     params_vector = randn(9)
 
     println(norm(gradient_analytic(params_vector)-gradient_objective(
      params_vector)))
 
-    initial_model(input) = pinn_model(input, params_vector)
+    initial_model(input) = pinn_model(input, params_vector,
+     neurons_number, activation_functions)
+
+    domain_pointsValues = Vector{Float64}(undef, size(
+    omega_collocationPoints,2)) 
+
+    for i=1:size(omega_collocationPoints,2)
+
+        domain_pointsValues[i] = initial_model(omega_collocationPoints[:,i])[1]
+
+    end 
+
+    # Converts the loss function to scientific notation and makes the
+    # plot 
+
+    title = @sprintf "%.3E" residue_domain(params_vector, neurons_number,
+    activation_functions)
     
     plot_surface([0.0; 1.0], [0.0; 1.0], initial_model, path_plot=
-    joinpath(pwd(), "after_optimization.pdf"), title=string("u(x,y),\\;"*
-     "\\varphi="*string(residue_domain(params_vector))))
+    joinpath(pwd(), "prior_optimization.pdf"), title=string("u(x,y),\\;"*
+     "\\varphi="*title), domain_collocationPoints=
+    omega_collocationPoints, domain_pointsValues=domain_pointsValues,
+    dirichlet_collocationPoints=[dOmega_collocationDirichlet[1] (
+    dOmega_collocationDirichlet[2])], dirichlet_pointsValues=[(
+    dOmega_valuesDirichlet[1][1,:]); dOmega_valuesDirichlet[2][1,:]])
 
     ci = -20*ones(length(params_vector))
 
@@ -295,16 +346,36 @@ function test_optimization()
 
     options["SHOW"] = true 
 
-    output = WallE.Solve(residue_domain, gradient_objective,
+    output = WallE.Solve(driver_residueAutoDiff, gradient_objective,
      params_vector, ci, cs, options)
 
     x = output["RESULT"]
 
-    final_model(input) = pinn_model(input, x)
-    
+    final_model(input) = pinn_model(input, x, neurons_number,
+     activation_functions)
+
+    domain_pointsValues = Vector{Float64}(undef, size(
+     omega_collocationPoints,2)) 
+
+    for i=1:size(omega_collocationPoints,2)
+
+        domain_pointsValues[i] = final_model(omega_collocationPoints[:,i])[1]
+
+    end 
+
+    # Converts the loss function to scientific notation and makes the
+    # plot 
+
+    title = @sprintf "%.3E" residue_domain(x, neurons_number,
+     activation_functions)
+
     plot_surface([0.0; 1.0], [0.0; 1.0], final_model, path_plot=
     joinpath(pwd(), "after_optimization.pdf"), title=string("u(x,y),\\;"*
-    "\\varphi="*string(residue_domain(x))))
+    "\\varphi="*title), domain_collocationPoints=
+    omega_collocationPoints, domain_pointsValues=domain_pointsValues,
+    dirichlet_collocationPoints=[dOmega_collocationDirichlet[1] (
+    dOmega_collocationDirichlet[2])], dirichlet_pointsValues=[(
+    dOmega_valuesDirichlet[1][1,:]); dOmega_valuesDirichlet[2][1,:]])
 
     writedlm(joinpath(pwd(), "trained_parameters.txt"), x)
 
